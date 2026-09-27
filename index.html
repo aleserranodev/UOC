@@ -12,8 +12,6 @@
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
 <meta name="apple-mobile-web-app-title" content="UOC">
-<script src="https://cdn.jsdelivr.net/npm/fullcalendar@6.1.15/index.global.min.js"></script>
-<script src="https://cdn.jsdelivr.net/npm/@fullcalendar/core@6.1.15/locales/es.global.min.js"></script>
 <style>
 :root {
   --bg: #f5f6f8; --surface: #ffffff; --surface-2: #f0f2f5; --text: #111827; --muted: #6b7280;
@@ -54,6 +52,8 @@ a { color: var(--info); }
 .icon-btn { border: 1px solid var(--border); background: var(--surface); border-radius: 10px; width: 38px; height: 38px; display: grid; place-items: center; cursor: pointer; }
 .icon-btn:hover { background: var(--surface-2); }
 .icon-btn svg { width: 18px; height: 18px; }
+.icon-btn.spinning svg { animation: spin 1s linear infinite; }
+@keyframes spin { to { transform: rotate(360deg); } }
 
 /* Navegación inferior (móvil) */
 .bottom { display: none; position: fixed; bottom: 0; left: 0; right: 0; z-index: 30; background: var(--surface); border-top: 1px solid var(--border); padding: 6px 6px calc(6px + env(safe-area-inset-bottom)); }
@@ -597,7 +597,22 @@ function shortName(t) {
   if ((m = t.match(/R(\d+)/))) return 'R' + m[1];
   return t.slice(0, 5);
 }
+let fcPromise = null;
+function loadScript(src) { return new Promise((res, rej) => { const s = document.createElement('script'); s.src = src; s.onload = res; s.onerror = rej; document.head.appendChild(s); }); }
+function ensureFC() {
+  if (typeof FullCalendar !== 'undefined') return Promise.resolve();
+  if (!fcPromise) fcPromise = loadScript('https://cdn.jsdelivr.net/npm/fullcalendar@6.1.15/index.global.min.js')
+    .then(() => loadScript('https://cdn.jsdelivr.net/npm/@fullcalendar/core@6.1.15/locales/es.global.min.js'))
+    .catch(e => { fcPromise = null; throw e; });
+  return fcPromise;
+}
 function mountCalendar() {
+  if (typeof FullCalendar === 'undefined') {
+    $('#cal').innerHTML = '<div class="empty">Cargando calendario…</div>';
+    ensureFC().then(() => { if (S.view === 'calendario' && $('#cal')) mountCalendar(); })
+      .catch(() => { if ($('#cal')) $('#cal').innerHTML = alertHtml(['warn', 'No se pudo cargar el calendario. Comprueba la conexión y recarga.']); });
+    return;
+  }
   const el = $('#cal');
   if (typeof FullCalendar === 'undefined') { el.innerHTML = alertHtml(['warn', 'No se pudo cargar el calendario (sin conexión a cdn.jsdelivr.net). Recarga la página.']); return; }
   const mobile = window.matchMedia('(max-width: 640px)').matches;
@@ -794,8 +809,11 @@ function afterAsig(id) {
    ================================================================= */
 function patchLocal(id, patch) { const e = S.data.entregas.find(x => x.id === id); if (e) Object.assign(e, patch); }
 function save(id, patch, msg) {
+  const e0 = S.data.entregas.find(x => x.id === id);
+  const antes = {}; Object.keys(patch).forEach(k => antes[k] = e0 ? e0[k] : undefined);
   patchLocal(id, patch); render(); refreshCalendar();
-  call('updateEntrega', id, patch).then(d => { S.data = d; render(); if (msg) toast(msg); }).catch(e => { fail(e); load(); });
+  call('updateEntrega', id, patch).then(d => { S.data = d; cacheData(d); render(); if (msg) toast(msg); })
+    .catch(e => { patchLocal(id, antes); render(); refreshCalendar(); toast('No se ha guardado (' + (e.message || e) + '). Inténtalo de nuevo con conexión.', 5000); });
 }
 function parseNota(v) {
   v = String(v).trim().replace(',', '.');
@@ -888,19 +906,36 @@ $('#btnTheme').onclick = () => { const t = document.documentElement.dataset.them
 $('#btnRefresh').onclick = () => { if (!IN_GAS && !API && !DEMO) return location.reload(); S.pdfs = {}; load(true); };
 applyTheme(store('uoc.theme') || (window.matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light'));
 
+function todayLocal() { const n = new Date(); return new Date(n.getTime() - n.getTimezoneOffset() * 60000).toISOString().slice(0, 10); }
+function cacheData(d) { if (!DEMO) store('uoc.cache', JSON.stringify(d)); }
 function load(notify) {
+  // Arranque rápido: mostrar al instante los últimos datos guardados y actualizar en segundo plano
+  if (!S.data && !DEMO) {
+    try {
+      const c = JSON.parse(store('uoc.cache') || 'null');
+      if (c && c.asignaturas) { c.hoy = todayLocal(); setData(c); spin(true); }
+    } catch (e) {}
+  }
   return call('getData').then(d => {
+    spin(false); cacheData(d);
+    if (S.data && JSON.stringify(Object.assign({}, S.data, { hoy: d.hoy })) === JSON.stringify(d)) { S.data = d; return notify && toast('Datos actualizados'); }
+    setData(d);
+    if (notify) toast('Datos actualizados');
+  }).catch(e => {
+    spin(false);
+    if (S.data && !/clave/i.test(e.message || '')) return toast('Sin conexión: mostrando los últimos datos guardados', 4000);
+    if (!IN_GAS && API) return showSetup('No se pudo conectar: ' + (e.message || e));
+    $('#app').innerHTML = `<div class="card">${alertHtml(['danger', 'No se pudieron cargar los datos: ' + esc(e.message || e) + '<br>¿Has ejecutado <b>setup</b> desde el menú UOC de la hoja?'])}</div>`;
+  });
+}
+function spin(on) { $('#btnRefresh').classList.toggle('spinning', on); }
+function setData(d) {
     S.data = d;
     if (!S.calFilter) {
       const saved = (store('uoc.calFilter') || '').split(',').filter(x => d.asignaturas.some(a => a.id === x));
       S.calFilter = new Set(saved.length ? saved : d.asignaturas.map(a => a.id));
     }
     render();
-    if (notify) toast('Datos actualizados');
-  }).catch(e => {
-    if (!IN_GAS && API) return showSetup('No se pudo conectar: ' + (e.message || e));
-    $('#app').innerHTML = `<div class="card">${alertHtml(['danger', 'No se pudieron cargar los datos: ' + esc(e.message || e) + '<br>¿Has ejecutado <b>setup</b> desde el menú UOC de la hoja?'])}</div>`;
-  });
 }
 
 /* ---------- Conexión de la app instalable ---------- */
@@ -946,7 +981,7 @@ function openCfg() {
     (navigator.clipboard ? navigator.clipboard.writeText(i.value) : Promise.reject()).then(() => toast('Enlace copiado'))
       .catch(() => { try { document.execCommand('copy'); toast('Enlace copiado'); } catch (e) { toast('Selecciónalo y cópialo a mano'); } });
   };
-  $('#btnDisconnect').onclick = () => { if (!confirm('¿Desconectar este dispositivo?')) return; store('uoc.api', ''); API = null; closeModal(); $('#btnCfg').style.display = 'none'; S.data = null; showSetup(); };
+  $('#btnDisconnect').onclick = () => { if (!confirm('¿Desconectar este dispositivo?')) return; store('uoc.api', ''); store('uoc.cache', ''); API = null; closeModal(); $('#btnCfg').style.display = 'none'; S.data = null; showSetup(); };
 }
 $('#btnCfg').onclick = openCfg;
 
