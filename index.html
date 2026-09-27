@@ -87,6 +87,8 @@ h3 { font-size: 14px; margin: 0 0 8px; color: var(--muted); text-transform: uppe
 .chip.on { background: var(--accent); color: var(--bg); border-color: var(--accent); }
 .btn { border: 1px solid var(--border); background: var(--surface); padding: 8px 14px; border-radius: 10px; cursor: pointer; display: inline-flex; align-items: center; gap: 8px; }
 .btn:hover { background: var(--surface-2); }
+a.btn { text-decoration: none; color: var(--text); }
+a.btn.primary { color: var(--bg); }
 .btn.primary { background: var(--accent); color: var(--bg); border-color: var(--accent); }
 .btn:disabled { opacity: .55; cursor: default; }
 .btn svg { width: 16px; height: 16px; }
@@ -226,6 +228,13 @@ table.t td.n, table.t th.n { text-align: right; }
    Estado
    ================================================================= */
 const S = { data: null, view: 'inicio', subtab: {}, pdfs: {}, calFilter: null, showPeriods: false, calView: null, target: {}, scen: {} };
+/* ENLACES A LOS PROYECTOS DE CLAUDE — pega aquí el enlace de cada asignatura (https://claude.ai/project/...) */
+const CLAUDE_LINKS = {
+  AGO: '',
+  ALG: '',
+  SO:  ''
+};
+function claudeUrl(id) { return CLAUDE_LINKS[id] || store('uoc.claude.' + id) || ''; }
 const MODULOS = {
   AGO: ['Módulo 1 · Conceptos básicos', 'Módulo 2 · Finanzas', 'Módulo 3 · Organizaciones y entorno', 'Módulo 4 · Plan de negocio', 'Módulo 5 · Datos y resiliencia', 'Enunciados PEC', 'Soluciones'],
   ALG: ['Módulo 1 · Los números', 'Módulo 2 · Álgebra y geometría', 'Módulo 3 · Sistemas de ecuaciones', 'Módulo 4 · Aplicaciones lineales', 'Módulo 5 · Transformaciones geométricas', 'Enunciados PEC', 'Soluciones'],
@@ -243,6 +252,8 @@ const ICON = {
   sheet: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="4" y="3" width="16" height="18" rx="2"/><path d="M4 9h16M4 15h16M10 3v18"/></svg>',
   up: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 16V4M7 9l5-5 5 5M4 20h16"/></svg>',
   trash: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 7h16M10 11v6M14 11v6M6 7l1 13h10l1-13M9 7V4h6v3"/></svg>',
+  claude: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3v4M12 17v4M3 12h4M17 12h4M5.6 5.6l2.8 2.8M15.6 15.6l2.8 2.8M5.6 18.4l2.8-2.8M15.6 8.4l2.8-2.8"/></svg>',
+  edit: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 20h9"/><path d="M16.5 3.5a2.1 2.1 0 0 1 3 3L7 19l-4 1 1-4z"/></svg>',
   folder: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 6.5A1.5 1.5 0 0 1 4.5 5H9l2 2.5h8.5A1.5 1.5 0 0 1 21 9v9.5a1.5 1.5 0 0 1-1.5 1.5h-15A1.5 1.5 0 0 1 3 18.5z"/></svg>'
 };
 
@@ -633,6 +644,25 @@ function openEntrega(id) {
     </div>`;
   $('#modal').classList.add('open');
 }
+function openClaudeLink(id) {
+  const a = asig(id);
+  $('#modalBox').innerHTML = `
+    <div class="row" style="justify-content:space-between"><h2 style="margin:0">Proyecto de Claude · ${esc(a.abrev)}</h2><button class="icon-btn" data-close aria-label="Cerrar">✕</button></div>
+    <p class="muted" style="font-size:13px;margin:6px 0 0">Se guarda en este dispositivo.</p><p style="font-size:14px">Abre el proyecto de <b>${esc(a.nombre)}</b> en <b>claude.ai</b> desde el navegador y copia la dirección de la barra (empieza por <code>https://claude.ai/project/</code>).</p>
+    <input type="text" id="claudeUrlIn" value="${esc(claudeUrl(id))}" placeholder="https://claude.ai/project/…" autocomplete="off" style="width:100%;padding:8px;border:1px solid var(--border);border-radius:10px;background:var(--surface)">
+    <div class="row" style="margin-top:12px;gap:8px;flex-wrap:wrap">
+      <button class="btn primary" id="btnSaveClaude">Guardar</button>
+      ${store('uoc.claude.' + id) ? '<button class="btn" id="btnDelClaude">Quitar enlace</button>' : ''}
+    </div>`;
+  $('#modal').classList.add('open');
+  const saveUrl = url => { store('uoc.claude.' + id, url); closeModal(); render(); toast(url ? 'Enlace guardado en este dispositivo' : 'Enlace quitado'); };
+  $('#btnSaveClaude').onclick = () => {
+    const url = $('#claudeUrlIn').value.trim();
+    if (!/^https:\/\/claude\.ai\//.test(url)) return toast('El enlace tiene que empezar por https://claude.ai/', 4000);
+    saveUrl(url);
+  };
+  if ($('#btnDelClaude')) $('#btnDelClaude').onclick = () => saveUrl('');
+}
 function closeModal() { $('#modal').classList.remove('open'); }
 
 /* ---------- Asignatura ---------- */
@@ -648,7 +678,12 @@ function viewAsig(id) {
   return `
   <div class="card hero" style="--c:${a.color}">
     <div class="row" style="justify-content:space-between;flex-wrap:wrap;gap:12px">
-      <div><h1 style="margin:0">${esc(a.nombre)}</h1><div class="muted" style="font-size:14px">${regla}</div></div>
+      <div><h1 style="margin:0">${esc(a.nombre)}</h1><div class="muted" style="font-size:14px">${regla}</div>
+        <div class="row" style="margin-top:10px;gap:6px;flex-wrap:wrap">
+          ${claudeUrl(a.id)
+            ? `<a class="btn primary" href="${esc(claudeUrl(a.id))}" target="_blank" rel="noopener">${ICON.claude} Abrir proyecto en Claude</a><button class="icon-btn" data-claude="${a.id}" title="Cambiar enlace" aria-label="Cambiar enlace del proyecto de Claude">${ICON.edit}</button>`
+            : `<button class="btn" data-claude="${a.id}">${ICON.claude} Enlazar proyecto de Claude</button>`}
+        </div></div>
       ${nx ? `<div class="days" style="--c:${a.color}"><b>${d <= 1 ? daysLabel(d) : d}</b><span>${d <= 1 ? esc(nx.actividad) : 'días · ' + esc(nx.actividad)}</span></div>` : ''}
     </div>
     <div class="grid g4" style="margin-top:14px">
@@ -824,6 +859,8 @@ document.addEventListener('click', ev => {
     call('deletePdf', aid, fid).then(r => { S.pdfs[aid] = r; render(); toast('PDF eliminado'); }).catch(fail);
     return;
   }
+  const cl = t.closest('[data-claude]');
+  if (cl) { openClaudeLink(cl.dataset.claude); return; }
   if (t.closest('#btnUpload')) { uploadPdfs(t.closest('#btnUpload').dataset.asig); return; }
 });
 
