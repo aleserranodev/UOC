@@ -230,11 +230,11 @@ table.t td.n, table.t th.n { text-align: right; }
 const S = { data: null, view: 'inicio', subtab: {}, pdfs: {}, calFilter: null, showPeriods: false, calView: null, target: {}, scen: {} };
 /* ENLACES A LOS PROYECTOS DE CLAUDE — pega aquí el enlace de cada asignatura (https://claude.ai/project/...) */
 const CLAUDE_LINKS = {
-  AGO: '',
-  ALG: '',
-  SO:  ''
+  AGO: 'https://claude.ai/project/01a0e239-00a4-76de-8f73-86ae290b7b1a',
+  ALG: 'https://claude.ai/project/01a0e225-2765-776a-bb5c-f8ccd919a6ff',
+  SO:  'https://claude.ai/project/01a0e236-aba9-721c-a458-17a193bec79a'
 };
-function claudeUrl(id) { return CLAUDE_LINKS[id] || store('uoc.claude.' + id) || ''; }
+function claudeUrl(id) { return CLAUDE_LINKS[id] || ''; }
 const MODULOS = {
   AGO: ['Módulo 1 · Conceptos básicos', 'Módulo 2 · Finanzas', 'Módulo 3 · Organizaciones y entorno', 'Módulo 4 · Plan de negocio', 'Módulo 5 · Datos y resiliencia', 'Enunciados PEC', 'Soluciones'],
   ALG: ['Módulo 1 · Los números', 'Módulo 2 · Álgebra y geometría', 'Módulo 3 · Sistemas de ecuaciones', 'Módulo 4 · Aplicaciones lineales', 'Módulo 5 · Transformaciones geométricas', 'Enunciados PEC', 'Soluciones'],
@@ -644,25 +644,6 @@ function openEntrega(id) {
     </div>`;
   $('#modal').classList.add('open');
 }
-function openClaudeLink(id) {
-  const a = asig(id);
-  $('#modalBox').innerHTML = `
-    <div class="row" style="justify-content:space-between"><h2 style="margin:0">Proyecto de Claude · ${esc(a.abrev)}</h2><button class="icon-btn" data-close aria-label="Cerrar">✕</button></div>
-    <p class="muted" style="font-size:13px;margin:6px 0 0">Se guarda en este dispositivo.</p><p style="font-size:14px">Abre el proyecto de <b>${esc(a.nombre)}</b> en <b>claude.ai</b> desde el navegador y copia la dirección de la barra (empieza por <code>https://claude.ai/project/</code>).</p>
-    <input type="text" id="claudeUrlIn" value="${esc(claudeUrl(id))}" placeholder="https://claude.ai/project/…" autocomplete="off" style="width:100%;padding:8px;border:1px solid var(--border);border-radius:10px;background:var(--surface)">
-    <div class="row" style="margin-top:12px;gap:8px;flex-wrap:wrap">
-      <button class="btn primary" id="btnSaveClaude">Guardar</button>
-      ${store('uoc.claude.' + id) ? '<button class="btn" id="btnDelClaude">Quitar enlace</button>' : ''}
-    </div>`;
-  $('#modal').classList.add('open');
-  const saveUrl = url => { store('uoc.claude.' + id, url); closeModal(); render(); toast(url ? 'Enlace guardado en este dispositivo' : 'Enlace quitado'); };
-  $('#btnSaveClaude').onclick = () => {
-    const url = $('#claudeUrlIn').value.trim();
-    if (!/^https:\/\/claude\.ai\//.test(url)) return toast('El enlace tiene que empezar por https://claude.ai/', 4000);
-    saveUrl(url);
-  };
-  if ($('#btnDelClaude')) $('#btnDelClaude').onclick = () => saveUrl('');
-}
 function closeModal() { $('#modal').classList.remove('open'); }
 
 /* ---------- Asignatura ---------- */
@@ -680,9 +661,7 @@ function viewAsig(id) {
     <div class="row" style="justify-content:space-between;flex-wrap:wrap;gap:12px">
       <div><h1 style="margin:0">${esc(a.nombre)}</h1><div class="muted" style="font-size:14px">${regla}</div>
         <div class="row" style="margin-top:10px;gap:6px;flex-wrap:wrap">
-          ${claudeUrl(a.id)
-            ? `<a class="btn primary" href="${esc(claudeUrl(a.id))}" target="_blank" rel="noopener">${ICON.claude} Abrir proyecto en Claude</a><button class="icon-btn" data-claude="${a.id}" title="Cambiar enlace" aria-label="Cambiar enlace del proyecto de Claude">${ICON.edit}</button>`
-            : `<button class="btn" data-claude="${a.id}">${ICON.claude} Enlazar proyecto de Claude</button>`}
+          ${claudeUrl(a.id) ? `<a class="btn primary" href="${esc(claudeUrl(a.id))}" target="_blank" rel="noopener">${ICON.claude} Abrir proyecto en Claude</a>` : ''}
         </div></div>
       ${nx ? `<div class="days" style="--c:${a.color}"><b>${d <= 1 ? daysLabel(d) : d}</b><span>${d <= 1 ? esc(nx.actividad) : 'días · ' + esc(nx.actividad)}</span></div>` : ''}
     </div>
@@ -859,8 +838,6 @@ document.addEventListener('click', ev => {
     call('deletePdf', aid, fid).then(r => { S.pdfs[aid] = r; render(); toast('PDF eliminado'); }).catch(fail);
     return;
   }
-  const cl = t.closest('[data-claude]');
-  if (cl) { openClaudeLink(cl.dataset.claude); return; }
   if (t.closest('#btnUpload')) { uploadPdfs(t.closest('#btnUpload').dataset.asig); return; }
 });
 
